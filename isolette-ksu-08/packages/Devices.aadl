@@ -18,7 +18,7 @@
 package Devices
 public
 with Base_Types, Iso_Types;  -- Basic & isolette specific data types
-
+with EMV2;
 
 --------------------------------------------------------------------------------
 -- Device for producing heat.
@@ -27,6 +27,34 @@ device heat_source
   features
     on_heater: in event data port Iso_Types::on_off;
     heater_output: out data port Iso_Types::heat;
+    
+  annex EMV2 
+  {**
+    use types ErrorLibrary;
+    use behavior System_Errors::FailStop;
+    
+    error propagations
+      on_heater: in propagation {System_Errors::HeatControlError};
+    end propagations;
+    
+    properties
+      EMV2::OccurrenceDistribution => 
+          System_Properties::HeatSourceFailure applies to fail;
+          
+      EMV2::hazards => (
+        [ crossreference => "REMH A.3.2";
+          failure => "heat source breaks";
+          phases => ("all"); 
+          environment => "infant intensive care";
+          description => "mechanical disconnection of heat source";
+          comment => "always fails open (off)";
+        ]
+      ) applies to fail;
+
+      EMV2::Severity => ARP4761::Hazardous applies to fail;
+
+      EMV2::Likelihood => ARP4761::ExtremelyRemote applies to fail;  
+  **};
 end heat_source;
 
 device implementation heat_source.impl

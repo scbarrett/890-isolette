@@ -1,0 +1,10 @@
+property set System_Properties is
+with EMV2;
+
+
+-- Failure rate for heat source.
+HeatSourceFailure : constant EMV2::DistributionSpecification => 
+    [ProbabilityValue => 1.8E-7; Distribution => Fixed;];
+
+
+end System_Properties;  
