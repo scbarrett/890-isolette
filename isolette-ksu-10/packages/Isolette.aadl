@@ -58,7 +58,7 @@ system implementation isolette.single_sensor
     t2: port thermostat.on_heater -> heat_source.on_heater;
     t3: port thermostat.on_alarm -> fail_alarm.on_alarm;
     
-    h1: port heat_source.heater_output -> temp_sensor.air_heat;
+    h1: port heated_air.heat_sense -> temp_sensor.air_heat;
     h2: port heat_source.heater_output -> heated_air.heat_source;
     h3: port heated_air.heat_sink -> heat_loss;
 
@@ -126,6 +126,7 @@ abstract air_to_heat
   features
     heat_source: in data port Iso_Types::heat;  -- Negative in would be a loss.
     heat_sink: out data port Iso_Types::heat;  -- Negative out would be a gain.
+    heat_sense: out data port Iso_Types::heat;
 end air_to_heat;
 
 -- An implementation of the abstract air type.
