@@ -1,0 +1,37 @@
+package Iso_Errors
+public
+
+
+-- System-wide error types and behaviors may be defined in a Library
+-- BUG: StuckControl is defined to get around fact that only direct line 
+--   descendant error types can be transformed: 
+--     ErrorLibrary::StuckValue -> ErrorLibrary::ServiceOmission = not OK
+--     StuckControl -> ErrorLibrary::ServiceOmission = OK
+annex EMv2
+{**   
+--  error types
+--    AlarmError: type;  -- Various alarm errors
+--      FalseAlarm: type extends AlarmError;  -- Alarm erroneously sounded
+--      MissedAlarm: type extends AlarmError;  -- Alarm not sounded  
+ 
+--    InternalError: type;  -- Internal error detected
+--    DetectedFault: type;  -- Fault occurred, and was detected
+--    UndetectedFault: type;  -- Fault occurred, but was not detected
+--  end types;
+
+
+-- This FSM is intended for generic component use
+  error behavior FailStop
+    events
+      err_evt: error event;
+    
+    states  -- Must be defined outside components
+      Working: initial state;  -- Power-on state of component
+      Failed: state;  -- Component has failed in an unrecoverable way
+
+--    transitions 
+--        Working -[err_evt]-> Failed;   
+  end behavior;
+**};
+
+end Iso_Errors;

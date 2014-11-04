@@ -1,5 +1,5 @@
 --------------------------------------------------------------------------------
--- Devices.aadl (version 07) - 
+-- Devices.aadl (version 08) - 
 --
 -- Authors: Stephen C. Barrett (scbarrett@ksu.edu) &
 --          Brian R. Larson (brl@ksu.edu)
@@ -14,47 +14,121 @@
 -- 05: Device interfaces typed with modeled data entities.
 --
 -- 07: New enumerated & range composite types.
+--
+-- 08: EMv2 error propagations added.
 --------------------------------------------------------------------------------
 package Devices
 public
 with Base_Types, Iso_Types;  -- Basic & isolette specific data types
-with EMV2;
+with KSU_Isolette, EMV2;
+
+
+-- Package-wide error types and behaviors may be defined outside of any component
+
+-- These types and states are intended for use by control loop actuators
+annex EMV2  
+{**  
+  error types
+    StuckOn: type extends ErrorLibrary::ServiceCommission;  -- Open control
+    StuckOff: type extends ErrorLibrary::ServiceOmission;  -- Short control
+  end types;
+
+  error behavior ActuatorFail
+    states  -- Must be defined outside components
+      Working: initial state;  -- Power-on state of component
+      AlwaysOn: state;  -- Component actuation signal is continuous
+      AlwaysOff: state;  -- Component actuation signal is absent
+      Failed: state;  -- Component has failed in an unrecoverable way
+  end behavior;
+**};
+
 
 --------------------------------------------------------------------------------
 -- Device for producing heat.
 --------------------------------------------------------------------------------
 device heat_source
   features
-    on_heater: in event data port Iso_Types::on_off;
-    heater_output: out data port Iso_Types::heat;
+    on_heater: in data port Iso_Types::on_off;     -- DR: Devices don't respond  
+    heater_output: out data port Iso_Types::heat;  --   event notifications
     
-  annex EMV2 
+  flows  
+    in_to_out: flow path on_heater -> heater_output;
+
+  -- DR: An open in on_heater propagates in as a StuckOn control.
+  -- DR: A short in on_heater propagates in as a StuckOff control.
+  -- DR: An open control propagates out a ServiceOmission. 
+  -- DR: A short control propagates out a ServiceComission.
+  -- BUG: EMv2 does not handle subclause comment tags, nor spell checking.
+  -- BUG: Only direct line descendant error types can be transformed.
+  -- BUG: No check on split of propagation error type set until used in flow. 
+  -- BUG: No check for property applies to: prop_point.error_type
+  annex EMV2
   {**
-    use types ErrorLibrary;
-    use behavior System_Errors::FailStop;
+    use types ErrorLibrary, Devices;  -- Isolated; can't rely on "with" or file
+    use behavior Devices::ActuatorFail;  -- Use package defined error behavior  
     
-    error propagations
-      on_heater: in propagation {System_Errors::HeatControlError};
+    error propagations  -- Errors that come in and out of this component
+      on_heater: in propagation {StuckOn, StuckOff};  -- Causes output errors 
+      heater_output: out propagation {ServiceCommission, ServiceOmission};
+
+      flows  -- Path is needed if an in propagation conditions a transition
+        bad_coil: error source heater_output {ServiceOmission};  -- No heat
+        in_to_out: error path on_heater -> heater_output;  -- Pass & transform
     end propagations;
     
+    component error behavior  -- Local error behavior defined inside component
+      events
+        control_short: error event {StuckOn};  -- Short in control line
+        control_open: error event {StuckOff};  -- Open in control line
+
+      transitions
+        Working -[control_short]-> AlwaysOn;  -- State change on line short
+        Working -[control_open]-> AlwaysOff;  -- State change on line open
+    end component;
+
     properties
-      EMV2::OccurrenceDistribution => 
-          System_Properties::HeatSourceFailure applies to fail;
-          
-      EMV2::hazards => (
-        [ crossreference => "REMH A.3.2";
-          failure => "heat source breaks";
+      EMV2::hazards => (  -- Needed for FHA report generation
+        [ crossreference => "REMH A.3.3";
+          failure => "Heat source control line break";
           phases => ("all"); 
-          environment => "infant intensive care";
-          description => "mechanical disconnection of heat source";
-          comment => "always fails open (off)";
+          environment => "infant incubator";
+          description => "Break in control line results in an open or short";
+          comment => "Open disrupts actuator action";
+          severity => 2;  -- Also a separate property  
+          likelihood => C;  -- Also a separate property
         ]
-      ) applies to fail;
+      ) applies to AlwaysOff, AlwaysOn;  -- FHA on states 
+--      ) applies to StuckOn;  -- No FHA on error types 
+--      ) applies to control_short;  -- No FHA on events
+--      ) applies to control_short.StuckOn;  -- FHA on events + type 
+--      ) applies to on_heater;  -- No FHA on in propagations
+--      ) applies to on_heater.StuckOff;  -- No FHA on in propagations + types
+--      ) applies to heater_output;  -- No FHA on out propagations  
+--      ) applies to heater_output.ServiceOmission;  -- FHA on out propagations + types  
+--      ) applies to bad_coil;  -- No FHA on sources 
+--      ) applies to bad_coil.ServiceOmission;  -- No FHA on sources + types 
+--      ) applies to flow;  -- No FHA on paths 
+--      ) applies to flow.StuckOff;  -- No FHA on paths + types 
 
-      EMV2::Severity => ARP4761::Hazardous applies to fail;
-
-      EMV2::Likelihood => ARP4761::ExtremelyRemote applies to fail;  
+      EMV2::hazards => (  -- Properties required for FHA report generation
+        [ description => "Electric coil of heat source fails";
+          crossreference => "REMH A.3.3";
+          failure => "Heat coil fails";
+          phases => ("all"); 
+          environment => "infant incubator";
+          severity => 1;  
+          likelihood => D;
+          verificationmethod => "Method used to address the hazard???";
+          comment => "No heat can be produced by a unit with a bad coil";
+        ]
+      ) applies to heater_output.ServiceOmission;  
   **};
+  -- RQ: Assigning error propagations discovers error modeling guide words and 
+  --   phrases. Also raises questions of error type set completeness, and the 
+  --   need for supporting code or circuitry in the model (see on_heater).
+  -- RQ: Need agreement on meaning & intent of error types at an organizational 
+  --   level. Definitions for the EMv2 ErrorLibrary types may be found in AADL 
+  --   Annex document AS5506/1B under section A COMMON SET OF ERROR TYPES.
 end heat_source;
 
 device implementation heat_source.impl
@@ -67,7 +141,94 @@ end heat_source.impl;
 device temperature_sensor
   features
     air_heat: in data port Iso_Types::heat;
-    air_temp: out data port Iso_Types::sensed_temperature;
+    air_temp: out data port Iso_Types::sensed_temperature;  
+
+  -- DR: Propagation air_heat is contrived to demonstrate an error sink.
+  -- DR: Temperature measure can be below or above the expected range, in range
+  --   but incorrect, or simply absent.
+  -- DR: Port air_heat is an error sink since the heat's value, and even its
+  --   presence or absence, cannot cause an error in the measuring unit.
+  -- BUG: While allowed syntacticly, EMv2 subclauses cannot be broken into 
+  --    multiple sections.
+  -- BUG: Propagation error type sets may be split, but usage in an error flow
+  --    will complain about types not being contained in the set.
+  -- BUG: Can't comment "--**};", must change to "--** };", etc.
+  -- BUG: Error source in a state propagates all possible errors. Can't limit
+  --   to given error type, e.g., no_value.  
+  annex EMV2 
+  {**
+    use types ErrorLibrary, Iso_Errors;
+    use behavior Iso_Errors::FailStop;  -- Reuse library defined error FSM
+    
+    error propagations
+      air_heat: in propagation {ServiceError};  -- Does not cause output errors   
+      air_temp: out propagation  -- Types must be disjoint; don't split the set
+          {OutOfRange, UndetectableValueError, ItemOmission};
+--      air_temp: out propagation                  -- Type set may be split but 
+--          {OutOfRange, UndetectableValueError};  --   causes constraint errors
+--      air_temp: out propagation                  --   in flows using the types
+--          {ItemOmission};
+
+      flows
+        lo_value: error source air_temp {BelowRange};  -- Type set may be split
+        hi_value: error source air_temp {AboveRange};  --   & may use subtypes
+        bad_value: error source air_temp {UndetectableValueError};  
+        no_value: error source air_temp {ItemOmission} when Failed;  
+        sample: error sink air_heat;  -- A flow element may be untyped  
+    end propagations;
+  
+    component error behavior  -- Local error behavior adds to library behavior
+--      propagations  -- Outgoing propagations: reference states of FailStop FSM
+--        Working -[air_heat]-> air_temp {OutOfRange};  -- For testing   
+--        Working -[]-> air_temp {AboveRange};  -- For testing   
+--        Failed -[air_heat]-> air_temp; --{OutOfRange};  -- For testing   
+--        Failed -[]-> air_temp;-- {ItemOmission};  -- When in Failed state, any out
+    end component;                             --   (?) attempt stops service
+  -- RQ: What error types are of concern to an untyped flow element?
+  -- RQ: What is relationship between type propagated by a flow and a behavior?
+  -- RQ: How are no_value0, no_value1, and -[]-> different and similar? 
+  -- RQ: What does -[]-> mean? How is it different from, say, -[air_heat]-> ? 
+
+    properties
+      EMV2::hazards => ( 
+        [ description => "Sensor damaged to the point of providing no output";
+          crossreference => "REMH A.3.2";
+          failure => "Temperature sensor inoperative";
+          phases => ("all"); 
+          environment => "infant incubator";
+          severity => 2;
+          likelihood => C;
+          verificationmethod => "???Method used to address the hazard???";
+          comment => "Failure is easily detected";
+        ]
+      ) applies to Failed; --err_evt;  -- Links to ppoint no_value
+      
+--      EMV2::hazards => (
+--        [ description => "Sensor measurement falls outside required range";
+--          crossreference => "REMH A.3.2";
+--          failure => "Temperature sensor value out of range";
+--          phases => ("all"); 
+--          environment => "infant incubator";
+--          severity => 3;  
+--          likelihood => B;
+--          verificationmethod => "???Method used to address the hazard???";
+--          comment => "Failure is easily detected";
+--        ]
+--      ) applies to air_temp.lo_value, air_temp.hi_value;  -- Apply to individual flows...
+            
+--      EMV2::hazards => (
+--        [ description => "Sensor measurement in required range, but incorrect";
+--          crossreference => "REMH A.3.2";
+--          failure => "Temperature sensor value incorrect";
+--          phases => ("all"); 
+--          environment => "infant incubator";
+--          severity => 3;  
+--          likelihood => B;
+--          verificationmethod => "???Method used to address the hazard???";
+--          comment => "Failure not detectable by system";
+--        ]
+--      ) applies to air_temp.UndetectableValueError;  --  ...specific error types...
+  **};
 end temperature_sensor;
 
 device implementation temperature_sensor.impl

@@ -1,0 +1,31 @@
+property set Iso_Properties is
+with EMV2;
+
+
+--------------------------------------------------------------------------------
+-- Failure rate for heat source
+--------------------------------------------------------------------------------
+
+-- Likelihood of complete failure
+HeatSourceStuckControl: constant EMV2::DistributionSpecification => 
+    [ProbabilityValue => 1.8E-7; Distribution => Fixed;];
+-- RQ: A shorted or opened control line failure is a system characteristic. 
+
+--------------------------------------------------------------------------------
+-- Failure rates for temperature sensor
+--------------------------------------------------------------------------------
+
+-- Likelihood of value out of range failure
+TempSensorOutOfRange: constant EMV2::DistributionSpecification => 
+    [ProbabilityValue => 1.0E-7; Distribution => Fixed;];
+
+-- Likelihood of value failure that is not out of range
+TempSensorUndetectableValueError: constant EMV2::DistributionSpecification => 
+    [ProbabilityValue => 1.0E-7; Distribution => Fixed;];
+
+-- Likelihood of complete failure
+TempSensorItemOmission: constant EMV2::DistributionSpecification => 
+    [ProbabilityValue => 1.3E-8; Distribution => Fixed;];
+-- RQ: A device's failure rates are obtained from manufacture specification.
+
+end Iso_Properties;  

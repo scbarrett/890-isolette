@@ -36,6 +36,20 @@ with Devices;  -- System's physical entities (i.e., black boxes)
 system isolette
   features
     heat_loss: out data port Iso_Types::heat;
+
+--annex EMV2 
+--  {** 
+--  use types ErrorLibrary, KSU_Isolette;
+--  error propagations
+--    -- captures the errors that may flow into the Isolette.  In this case, our only source
+--    -- of errors from the external environment comes from the operator entering commands that
+--    -- reflect a departure from the operator's intended use of the Isolette (i.e., the operator
+--    -- mistakenly enters wrong target or alarm temperatures)
+--    -- TBD: [from John] review with Kim to make sure that there are no other others that we want
+--    -- to model coming in from the environment.
+--    control_monitor_alarm: in propagation {OperatorError};
+--  end propagations;
+--  **};
 end isolette;
 
 -- An implementation of the isolette type having a single-sensor thermostat.
@@ -50,9 +64,26 @@ system implementation isolette.single_sensor
     t1: port temp_sensor.air_temp -> thermostat.air_temp;
     t2: port thermostat.on_heater -> heat_source.on_heater;
     
-    h1: port heat_source.heater_output -> temp_sensor.air_heat;
+    h1: port heated_air.heat_sense -> temp_sensor.air_heat;
     h2: port heat_source.heater_output -> heated_air.heat_source;
     h3: port heated_air.heat_sink -> heat_loss;
+
+--annex EMV2
+--  {**
+--  use types ErrorLibrary, KSU_Isolette;
+--  use behavior KSU_Isolette::CompositeFailure;
+--  error propagations
+--    control_monitor_alarm: in propagation {OperatorError};
+--    air_temperature: in propagation {ValueError};
+--    heat_out: out propagation {HeatControlError};   
+--  end propagations;
+--  composite error behavior
+--  states 
+--  [temperature_sensor.failed or thermostat.ReportedFailure  
+--    or heat_source.failed]->ReportedFailure;
+--  [temperature_sensor.flakey or thermostat.MissedFailure]->MissedFailure;
+--  end composite;
+--  **};
 end isolette.single_sensor;
 
 -- An implementation of the isolette type having a dual-sensor thermostat.
@@ -68,10 +99,61 @@ system thermostat_single_sensor
     air_temp: in data port Iso_Types::sensed_temperature;
     on_heater: out event data port Iso_Types::on_off;
     on_alarm: out event data port Iso_Types::on_off;
+
+  annex EMV2 
+  {**
+    use types ErrorLibrary; 
+    use behavior Iso_Errors::FailStop;  -- Reuse library defined error FSM
+    
+    error propagations
+      air_temp: in propagation  -- Types must be disjoint; set may not be split
+          {OutOfRange, UndetectableValueError, ItemOmission};
+
+--      flows
+--        lo_value: error source air_temp {BelowRange};  -- Type set may be split
+--        hi_value: error source air_temp {AboveRange};  -- May use set subtypes
+--        bad_value: error source air_temp {UndetectableValueError};  
+--        no_value0: error source air_temp {ItemOmission};  -- Redundant?
+--        no_value1: error source air_temp {ItemOmission} when failed;  
+--        sample: error sink air_heat;  -- A flow element may be untyped  
+    end propagations;
+  **};
+
+
+--annex EMV2 
+--  {** 
+--  use types ErrorLibrary, KSU_Isolette;
+--  error propagations
+--  current_temperature: in propagation
+--    {OutOfRange,UndetectableValueError};
+--  display_temperature: out propagation {UndetectableValueError};
+--  regulator_status: out propagation {RegulatorStatusError};
+--  monitor_status: out propagation {MonitorStatusError};
+--  alarm: out propagation {AlarmError};
+--  heat_control: out propagation {HeatControlError};
+--  flows
+--    ct_uve_dt: error path current_temperature{UndetectableValueError}
+--      ->display_temperature{UndetectableValueError};
+--    ct_uve_rs: error path current_temperature{UndetectableValueError}
+--      ->regulator_status{RegulatorStatusError};
+--  end propagations;
+--  **};
 end thermostat_single_sensor;
 
 -- An implementation of the single sensor thermostat type.
 system implementation thermostat_single_sensor.impl
+--annex EMV2
+--  {**
+--  use types ErrorLibrary, KSU_Isolette;
+--  use behavior KSU_Isolette::CompositeFailure;
+--  composite error behavior
+--  states 
+--  [regulate_temperature.ReportedFailure or monitor_temperature.ReportedFailure 
+----    or .ReportedFailure   
+--  ]->ReportedFailure;
+--  [regulate_temperature.MissedFailure]->MissedFailure;
+--  end composite;
+--  **};
 end thermostat_single_sensor.impl;
 
 
@@ -82,6 +164,26 @@ abstract air_to_heat
   features
     heat_source: in data port Iso_Types::heat;  -- Negative in would be a loss.
     heat_sink: out data port Iso_Types::heat;  -- Negative out would be a gain.
+    heat_sense: out data port Iso_Types::heat;
+
+  annex EMV2 
+  {**
+    use types ErrorLibrary;
+    use behavior Iso_Errors::FailStop;  -- Reuse library defined error FSM
+    
+    error propagations
+      heat_source: in propagation  -- Types must be disjoint; set may not be split
+          {ServiceOmission, ServiceCommission};
+
+--      flows
+--        lo_value: error source air_temp {BelowRange};  -- Type set may be split
+--        hi_value: error source air_temp {AboveRange};  -- May use set subtypes
+--        bad_value: error source air_temp {UndetectableValueError};  
+--        no_value0: error source air_temp {ItemOmission};  -- Redundant?
+--        no_value1: error source air_temp {ItemOmission} when failed;  
+--        sample: error sink air_heat;  -- A flow element may be untyped  
+    end propagations;
+  **};
 end air_to_heat;
 
 -- An implementation of the abstract air type.
