@@ -1,7 +1,7 @@
 890-isolette
 ============
 
-Progressive models of the FAA's REMH isolette example for purposes of learning AADL.
+Progressive models of the FAA's REMH isolette example for purposes of teaching AADL.
 
 <table>
   <tr>
